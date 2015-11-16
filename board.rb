@@ -29,8 +29,8 @@ def reverse_color;  "\e[7m#{self}\e[27m" end
 end
 
 class Board
-  attr_reader :cols, :rows, :cursor
-  attr_accessor :lines
+  attr_reader :cols, :rows, :line_size
+  attr_accessor :lines, :cursor_pos
 
   NTERMS = [10.chr, 13.chr]
 
@@ -38,7 +38,9 @@ class Board
     @cols = cols
     @rows = rows
     @lines = lines  # string
-    @cursor = Cursor.new(0, 0)
+    @cursor_pos = 0
+    @line_size = 0
+    @cursor_char = '▒'
   end
 
   def display
@@ -50,9 +52,10 @@ class Board
     nextline = true
 
     ln = ""
+    pos = 0
 
     @rows.times do |row|
-      print "#"
+      print "#".black
       newcols = @cols
       if nextline
         nextline = false
@@ -66,34 +69,75 @@ class Board
       newcols.times do |col|
         c = ln.slice! 0
 
-        if row == @cursor.row && col == @cursor.col
-          print @cursor
+        if pos == @cursor_pos
+          print @cursor_char
         elsif c.nil?
           nextline = true
           last_col = col
+          pos += 1
           break
         else
           print c
         end
 
+        pos += 1
       end
       (newcols - last_col).times do |col|
-        if row == @cursor.row && (col + last_col) == @cursor.col
-          print @cursor
-        else
-          print '.'
-        end
+        print '.'.black
       end
 
-      puts "#"
+      puts "#".black
     end
     puts "#".black * (cols + 2)
   end
 
-  def move_left;     @cursor.col = (@cursor.col <= 1 ? 0 : @cursor.col - 1) end
-  def move_right;    @cursor.col = (@cursor.col >= cols - 1 ? cols - 1 : @cursor.col + 1) end
-  def move_up;       @cursor.row = (@cursor.row <= 1 ? 0 : @cursor.row - 1) end
-  def move_down;     @cursor.row = (@cursor.row >= rows - 1 ? rows - 1 : @cursor.row + 1) end
+  # Count the number of characters between start_pos and the next \n
+  def distance_to_newline(start_pos, direction)
+    dir = (direction == :left ? -1 : 1)
+    i = start_pos + dir
+    distance = 0
+
+    while i.between?(0, @lines.size - 1) do
+      break if ([10, 13].include? @lines[i].ord)
+      distance += 1
+      i += dir
+    end
+    distance + (direction == :right ? 1 : 0)
+  end
+
+
+  def move_left;     @cursor_pos -= 1 if (@cursor_pos > 0) end
+  def move_right;    @cursor_pos += 1 if (@cursor_pos < @lines.size) end
+
+  def move_up
+    cursor_offset = distance_to_newline(@cursor_pos, :left)
+    if @cursor_pos == cursor_offset
+      @cursor_pos = 0
+    else
+      prev_line_size = @line_size = distance_to_newline(@cursor_pos - cursor_offset - 1, :left)
+      if prev_line_size < cursor_offset
+        @cursor_pos -= cursor_offset
+      else
+        @cursor_pos -= (prev_line_size + 1)
+      end
+    end
+  end
+
+  def move_down
+    remaining = distance_to_newline(@cursor_pos, :right)
+    if @cursor_pos + remaining == @lines.size - 1
+      @cursor_pos = @lines.size - 1
+    else
+      cursor_offset = distance_to_newline(@cursor_pos, :left)
+      next_line_size = @line_size = distance_to_newline(@cursor_pos + remaining, :left) + 1
+      if next_line_size < cursor_offset
+        @cursor_pos += remaining + next_line_size + 1
+      else
+        @cursor_pos += remaining + cursor_offset + 1
+      end
+    end
+    @cursor_pos = @lines.size - 1 if @cursor_pos >= @lines.size
+  end
 
 
 end
